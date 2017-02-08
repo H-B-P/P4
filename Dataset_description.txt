@@ -1,0 +1,34 @@
+NHS_indicator_data
+
+Values of NHS indicators and associated values for all NHS practices in the UK.
+
+Description
+
+Contains the following information:
+
+CCG.Name: The group to which each practice belongs.
+MH.QOF.PREVALENCE: Fraction of patients diagnoed with schizophrenia, bipolar affective disorder, or another psychosis.
+DEP.QOF.PREVALENCE: Fraction of patients diagnosed with depression.
+DEP.QOF.INCIDENCE: Fraction of patients diagnosed with depression who became depressed in a given year.
+DEM.QOF,PREVALENCE: Fraction of patients diagnosed with dementia.
+LTMH.REPORTED: Fraction of respondents who reported having a long-term mental health issue.
+ALZ.OR.DEM.REPORTED: Fraction of respondents who reported having Alzheimers or dementia.
+*.INDICATOR.EXCEPTION.RATE: For incentive reasons, some patients aren't added to the indicators. For example, some patients would have been given a treatment measured by an indicator, except that it would have interacted negatively with other treatments. Since they didn't perform the treatment, but the treatment genuinely shouldn't have been performed, the patient is excluded from the numerator AND denominator of the indicator; and since they want some kind of record of the event, it is recorded in the exception rate variable.
+DEP001, DEP003: Indicators of a given practice's ability to treat depression. DEP001 is the proportion of newly diagnosed patients w. depression who had a bio-psychosocial assessment on diagnosis. DEP003 is the proportion of newly diagnosed patients with depression who had a review 10-56 days after diagnosis.
+MH0*: Similar indicators, but for for mental health in general.
+DEM0*: Similar indicators, but for dementia.
+
+*_[Year]_Value: The value of a variable during that year.
+*_[Year]_Denom: The denominator associated with a variable during that year. For example: for DEP001 and DEP003 it's the newly diagnosed patients with depression.
+
+Usage
+
+NHS_indicator_data
+
+Format
+
+A multivariate dataframe with 7586 observations on 164 variables.
+
+Source
+
+The data are publicly available from NHS's "Fingertips" online tool.

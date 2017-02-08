@@ -1,0 +1,1735 @@
+ANALYSIS OF NHS MENTAL HEALTH INDICATOR DATA by HUGH PANTON
+========================================================
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+```
+
+LONG-TERM PLAN AT START OF PROJECT
+
+My plan is as follows:
+
+1. Clean and reformat the data until it can be loaded into R; then, load it in.
+
+2. Cut the data into two equally-sized parts (each of which would still have the >1000 records needed to qualify) using an unbiased sampling method.
+
+3. Perform EDA on the first half.
+
+3a. Univariate.
+
+3b. Pseudo-Bivariate.
+
+3c. Bivariate.
+
+3d. Multivariate.
+
+4. Generate hypotheses about the data from the EDA. Decide and pre-register the statistical tests that I plan to use on the remaining half to confirm these hypotheses.
+
+5. Execute these tests & report results.
+
+Note that steps 1 and 3 are the only ones required by the mark scheme.
+
+Note also that the purpose of cutting the data is to avoid pitfalls associated with testing hypotheses on the data which suggested them (isomorphic to testing on the training set in machine learning: see the first link in my references text file for a fuller explanation).
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, packages}
+# Load all of the packages that you end up using
+# in your analysis in this code chunk.
+
+# Notice that the parameter "echo" was set to FALSE for this code chunk.
+# This prevents the code from displaying in the knitted HTML output.
+# You should set echo=FALSE for all code chunks in your file.
+
+library(ggplot2)
+library(gridExtra)
+library(dplyr)
+library(GGally)
+library(reshape2)
+```
+
+NOTES ON CLEANING/REFORMATTING THE DATA
+
+a_1) It would probably make sense to clean the data while it's still in spreadsheet format. I'll save the cleaned version under a new name, so readers can check what I did to clean it.
+
+<br>
+
+b_1) The dataset comprises a list of 'indicators' for poor mental health, such as the fraction of patients suffering from Alzheimers or Dementia per total patients treated. All of them are of the form "X patients in category Y per Z patients in category Q", where category Y is a subset of category Q. All are given in percentage format. These are given for all the years in the range 2009-2016 for which the data was collected. Not all data types were collected every year; some were brought in partway through, others were discontinued.
+
+b_2) Along with the percentages, each entry has the numerator and denominator used to calculate the percentages, and an upper and lower bound of a 95% confidence interval for the percentage. There are actually only two degrees of freedom: everything is calculated from the numerator and denominator. I will delete the numerator, upper bound and lower bound, to make the dataset more manageable.
+
+b_3) Some of the data from earlier years has only the percentage, leaving the numerator, denominator and confidence intervals blank. I will have to make sure that these aren't ignored when they're relevant.
+
+b_4) Some values are absent, even though they should be present; these are indicated by the percentage being set to -1 and all other values being left blank. Some other values are absent because the practice in question wasn't active at the time. I don't think I need to do anything about them at this stage, but once they're loaded into R I should make sure the -1s and blanks won't be read as actual data. This can be achieved by replacing all blanks indicating missing figures with NaN.
+
+b_5) The numerator and denominator are not always whole numbers: in the two "percentage reporting X" variables, they will frequently claim that - to use a real example - 16.3735515 out of 2626.67152 respondents to a survey claimed to have a longterm mental health problem. I don't understand how this makes sense, and it makes me worried about using these variables in my exploration. Possibly they intentionally obfuscated the data to enhance patient confidentiality? Or they rederived these figures from data sources which had been rounded?
+
+The data source for these variables is given in the metadata sheet of the spreadsheet as gp-patient.co.uk. Looking at their FAQ (https://gp-patient.co.uk/faq/weighted-data) suggests that they 'weight' their data, treating the responses of demographics who respond less as counting more. Their use of this technique explains the fractional numerators and denominators to my satisfaction; I am now comfortable using this.
+
+b_6) The data is listed by financial year: 2011/2012, 2012/2013. I think it would be easier to handle if I re-marked all of these years as the starting year: 2011/2012 becomes 2011, etc.
+
+b_7) Similar problem to b5. The QOF prevalences and incidence rates for depression have fractional denominators but whole numerators, for all years except 2015. This appears to be a fact about how exceptions data is/was used, and hence doesn't concern me.
+
+b_8) R might have trouble loading in merged cells, so I split all merged cells.
+
+<br>
+
+c_1) Attempts to load in the data technically worked, but R didn't recognise years and denominator/value designations as parts of the column titles. I'll combine them all and try again. I'll also reword the titles to be shorter and more indicative.
+
+c_2) While doing the above, I noticed a value/denominator column pair which was NaN all the way down, so I deleted it.
+
+How many records does this dataset have?
+
+```{r echo=FALSE, Load_the_Data}
+# Load the Data
+NHS_indicator_data<-read.csv("Indicator_data_cleaned_and_purged_II.csv")
+nrow(NHS_indicator_data)
+# Pick out every second record; I've checked, there's no obvious way this would bias the selection.
+
+explorer_c<-c(1:(nrow(NHS_indicator_data)/2))*2
+tester_c<-c(1:(nrow(NHS_indicator_data)/2))*2-1
+
+explorer_df<-NHS_indicator_data[explorer_c,]
+tester_df<-NHS_indicator_data[tester_c,]
+
+```
+
+# Univariate Plots Section
+```{r echo=FALSE, Univariate_Plots_1}
+
+#The prevalence and incidence of depression are both per patients over 18 registered with the practice. Let IP_FRACTION be the incidence over prevalence; that is, the proportion of known-to-be-depressed patients who started being depressed in a given year.
+
+explorer_df$IP_FRACTION_2012<-
+  explorer_df$DEP.QOF.INCIDENCE_2012_Value/
+  explorer_df$DEP.QOF.PREVALENCE_2012_Value
+
+explorer_df$IP_FRACTION_2013<-
+  explorer_df$DEP.QOF.INCIDENCE_2013_Value/
+  explorer_df$DEP.QOF.PREVALENCE_2013_Value
+
+explorer_df$IP_FRACTION_2014<-
+  explorer_df$DEP.QOF.INCIDENCE_2014_Value/
+  explorer_df$DEP.QOF.PREVALENCE_2014_Value
+
+explorer_df$IP_FRACTION_2015<-
+  explorer_df$DEP.QOF.INCIDENCE_2015_Value/
+  explorer_df$DEP.QOF.PREVALENCE_2015_Value
+```
+
+I'll start by taking a quick look at the incidence of depression in 2012.
+
+```{r echo=FALSE, Univariate_Plots_2}
+
+qplot(bins=100,
+      x=DEP.QOF.INCIDENCE_2012_Value,
+      data=subset(explorer_df,
+                  DEP.QOF.INCIDENCE_2012_Value>-1))
+
+
+
+```
+
+What do the outliers look like? Restrict to values greater than 4%.
+
+```{r echo=FALSE, Univariate_Plots_3}
+
+qplot(bins=100,
+      x=DEP.QOF.INCIDENCE_2012_Value,
+      data=subset(explorer_df,
+                  DEP.QOF.INCIDENCE_2012_Value>4))
+
+```
+
+Is it like this every year? Try doing the same for 2013, 2014 and 2015 data.
+```{r echo=FALSE, Univariate_Plots_4}
+p1<-qplot(bins=100,
+      x=DEP.QOF.INCIDENCE_2013_Value,
+      data=subset(explorer_df,
+                  DEP.QOF.INCIDENCE_2013_Value>-1))
+
+p2<-qplot(bins=100,
+      x=DEP.QOF.INCIDENCE_2013_Value,
+      data=subset(explorer_df,
+                  DEP.QOF.INCIDENCE_2013_Value>4))
+
+p3<-qplot(bins=100,
+      x=DEP.QOF.INCIDENCE_2014_Value,
+      data=subset(explorer_df,
+                  DEP.QOF.INCIDENCE_2014_Value>-1))
+
+p4<-qplot(bins=100,
+      x=DEP.QOF.INCIDENCE_2014_Value,
+      data=subset(explorer_df,
+                  DEP.QOF.INCIDENCE_2014_Value>4))
+
+p5<-qplot(bins=100,
+      x=DEP.QOF.INCIDENCE_2015_Value,
+      data=subset(explorer_df,
+                  DEP.QOF.INCIDENCE_2015_Value>-1))
+
+p6<-qplot(bins=100,
+      x=DEP.QOF.INCIDENCE_2015_Value,
+      data=subset(explorer_df,
+                  DEP.QOF.INCIDENCE_2015_Value>4))
+
+grid.arrange(p1,p2,p3,p4,p5,p6, ncol=2)
+```
+
+Those look like Poisson distributions to me.
+
+Are the outliers just freak occurrences, caused by high variance and low denominators? Or are they facts about the location and clinic in question?
+
+```{r echo=FALSE, Univariate_Plots_5}
+
+qplot(bins=100,
+      x=DEP.QOF.INCIDENCE_2015_Value,
+      data=subset(explorer_df,
+                  DEP.QOF.INCIDENCE_2015_Value>-1 &
+                  DEP.QOF.INCIDENCE_2015_Denom>5000))
+```
+
+Limiting to data points associated with high denominators diminishes the number of outliers, suggesting this might be just noise. But let's be more rigorous.
+
+```{r echo=FALSE, Univariate_Plots_6}
+a<-subset(explorer_df, DEP.QOF.INCIDENCE_2012_Value>3)
+a<-subset(a, DEP.QOF.INCIDENCE_2013_Value>3)
+a<-subset(a, DEP.QOF.INCIDENCE_2014_Value>3)
+a<-subset(a, DEP.QOF.INCIDENCE_2015_Value>3)
+
+p1<-qplot(binwidth=0.2,x=DEP.QOF.INCIDENCE_2015_Value, data=a)
+
+b<-subset(explorer_df, DEP.QOF.INCIDENCE_2012_Value>3)
+b<-subset(b, DEP.QOF.INCIDENCE_2013_Value>3)
+b<-subset(b, DEP.QOF.INCIDENCE_2014_Value>3)
+
+p2<-qplot(binwidth=0.2,x=DEP.QOF.INCIDENCE_2015_Value, data=b)
+
+c<-subset(explorer_df, DEP.QOF.INCIDENCE_2013_Value>3)
+c<-subset(c, DEP.QOF.INCIDENCE_2014_Value>3)
+
+p3<-qplot(binwidth=0.2,x=DEP.QOF.INCIDENCE_2015_Value, data=c)
+
+d<-subset(explorer_df, DEP.QOF.INCIDENCE_2014_Value>3)
+
+p4<-qplot(binwidth=0.2,x=DEP.QOF.INCIDENCE_2015_Value, data=d)
+
+grid.arrange(p4,p3,p2,p1, ncol=2)
+
+```
+
+The above four plots show the 2015 incidence of depression for places which had >3% depression incidence:
+
+.In 2012. (top left)
+
+.In 2012 and 2013. (top right)
+
+.In 2012,2013, and 2014. (bottom left)
+
+.In 2012,2013, 2014, and 2015. (bottom right)
+
+
+These plots show that it's not just randomness; some places do have more depression than others, in ways sustained year-on-year. In particular, the majority of places which were high-depression outliers three years in a row will be high-depression outliers four years in a row (last two graphs were virtually identical).
+
+<br>
+
+How does the prevalence data look for depression?
+```{r echo=FALSE, Univariate_Plots_7}
+
+qplot(bins=100,
+      x=DEP.QOF.PREVALENCE_2015_Value,
+      data=subset(explorer_df,
+                  DEP.QOF.INCIDENCE_2015_Value>-1))
+
+qplot(bins=100,
+      x=DEP.QOF.PREVALENCE_2014_Value,
+      data=subset(explorer_df,
+                  DEP.QOF.INCIDENCE_2014_Value>-1))
+```
+
+How about for IP_FRACTION (ratio of incidence to prevalence)?
+
+```{r echo=FALSE, Univariate_Plots_8}
+
+qplot(bins=100,
+      x=IP_FRACTION_2014,
+      data=explorer_df)
+```
+
+Well, that didn't work. Try again with a limit at 1.1.
+
+```{r echo=FALSE, Univariate_Plots_9}
+
+qplot(bins=100,
+      x=IP_FRACTION_2014,
+      data=subset(explorer_df,
+                  IP_FRACTION_2014<1.1))
+
+```
+
+How could a fraction like that exceed 1 under any circumstances? Exceptions, maybe. But I thought they only showed up in the indicators?
+
+Graph the outliers.
+
+```{r echo=FALSE, Univariate_Plots_10}
+
+qplot(bins=100,
+      x=IP_FRACTION_2014,
+      data=subset(explorer_df,
+                  IP_FRACTION_2014>1))
+```
+
+So, there are only two outliers. Let's output the practice codes so I can look at them in more detail.
+
+```{r echo=FALSE, Univariate_Plots_11}
+subset(explorer_df,
+       IP_FRACTION_2014>1)$Practice.Code
+```
+
+I can use this to look up the relevant values in the original spreadsheet.
+
+I see my problem! The prevalence for these outliers is the prevalence at the start of the year; incidence is the incidence during the year.
+
+Try pairing incidence and prevalence, using the assumption that everyone recorded their data that way.
+
+```{r echo=FALSE, Univariate_Plots_12}
+
+#So the fractions should actually be
+
+explorer_df$IP_FRACTION_2012<-
+  explorer_df$DEP.QOF.INCIDENCE_2012_Value/
+  explorer_df$DEP.QOF.PREVALENCE_2013_Value
+
+explorer_df$IP_FRACTION_2013<-
+  explorer_df$DEP.QOF.INCIDENCE_2013_Value/
+  explorer_df$DEP.QOF.PREVALENCE_2014_Value
+
+explorer_df$IP_FRACTION_2014<-
+  explorer_df$DEP.QOF.INCIDENCE_2014_Value/
+  explorer_df$DEP.QOF.PREVALENCE_2015_Value
+
+#Let's try that out.
+
+p1<-qplot(bins=100, x=IP_FRACTION_2015, data=explorer_df)
+p2<-qplot(bins=100, x=IP_FRACTION_2014, data=explorer_df)
+p3<-qplot(bins=100, x=IP_FRACTION_2013, data=explorer_df)
+
+grid.arrange(p1,p2,p3, ncol=2)
+```
+
+Not an improvement. In fact, as you can see from the diminished peak at 1 (for practices which started that year), FEWER practices used this definition.
+
+I think some practices used one definition for prevalence/incidence, and some used another. Best approach would probably be to use original definitions and exclude all values exceeding 1.
+
+And I should obviously leave out anything where incidence or prevalence is -1. I didn't think to do that earlier.
+
+Two graphs, the first using the paradigm described above, the second using the previous paradigm, both with -1s excluded:
+
+```{r echo=FALSE, Univariate_Plots_13}
+
+explorer_df$IP_FRACTION_2014<-
+  explorer_df$DEP.QOF.INCIDENCE_2014_Value/
+  explorer_df$DEP.QOF.PREVALENCE_2014_Value
+
+qplot(bins=100,
+      x=IP_FRACTION_2014,
+      data=subset(explorer_df,
+                  IP_FRACTION_2014<=1 &
+                  DEP.QOF.INCIDENCE_2014_Value>-1 &
+                  DEP.QOF.PREVALENCE_2014_Value>-1))
+
+explorer_df$IP_FRACTION_2014<-
+  explorer_df$DEP.QOF.INCIDENCE_2014_Value/
+  explorer_df$DEP.QOF.PREVALENCE_2015_Value
+
+qplot(bins=100,
+      x=IP_FRACTION_2014,
+      data=subset(explorer_df, 
+                  IP_FRACTION_2014<=1 &
+                  DEP.QOF.INCIDENCE_2014_Value>-1 &
+                  DEP.QOF.PREVALENCE_2015_Value>-1))
+```
+
+With the possibility of -1/-1 excluded, the original definition for IP_FRACTION conforms most closely to expectations (the other definition has NO peak at 1 in 2014 data!). I'll use it from here on out.
+
+```{r echo=FALSE, Univariate_Plots_14}
+explorer_df$IP_FRACTION_2012<-
+  explorer_df$DEP.QOF.INCIDENCE_2012_Value/
+  explorer_df$DEP.QOF.PREVALENCE_2012_Value
+
+explorer_df$IP_FRACTION_2013<-
+  explorer_df$DEP.QOF.INCIDENCE_2013_Value/
+  explorer_df$DEP.QOF.PREVALENCE_2013_Value
+
+explorer_df$IP_FRACTION_2014<-
+  explorer_df$DEP.QOF.INCIDENCE_2014_Value/
+  explorer_df$DEP.QOF.PREVALENCE_2014_Value
+
+explorer_df$IP_FRACTION_2015<-
+  explorer_df$DEP.QOF.INCIDENCE_2015_Value/
+  explorer_df$DEP.QOF.PREVALENCE_2015_Value
+
+p1<-qplot(bins=100,
+      x=IP_FRACTION_2015,
+      data=subset(explorer_df,
+                  IP_FRACTION_2015<=1 &
+                  DEP.QOF.INCIDENCE_2015_Value>-1 &
+                  DEP.QOF.PREVALENCE_2015_Value>-1))
+
+p2<-qplot(bins=100,
+      x=IP_FRACTION_2014,
+      data=subset(explorer_df,
+                  IP_FRACTION_2014<=1 &
+                  DEP.QOF.INCIDENCE_2014_Value>-1 &
+                  DEP.QOF.PREVALENCE_2014_Value>-1))
+
+p3<-qplot(bins=100,
+      x=IP_FRACTION_2013,
+      data=subset(explorer_df,
+                  IP_FRACTION_2013<=1 &
+                  DEP.QOF.INCIDENCE_2013_Value>-1 &
+                  DEP.QOF.PREVALENCE_2013_Value>-1))
+
+p4<-qplot(bins=100,
+      x=IP_FRACTION_2012,
+      data=subset(explorer_df,
+                  IP_FRACTION_2012<=1 &
+                  DEP.QOF.INCIDENCE_2012_Value>-1 &
+                  DEP.QOF.PREVALENCE_2012_Value>-1))
+
+grid.arrange(p4,p3,p2,p1, ncol=2)
+```
+
+So, what do the Depression indicators look like? I'll use summaries as well, for these.
+
+```{r echo=FALSE, Univariate_Plots_15}
+
+summary(explorer_df$DEP001_2013_Value)
+
+qplot(bins=100,
+      x=DEP001_2013_Value,
+      data=subset(explorer_df, 
+                  DEP001_2013_Value>-1))
+
+summary(explorer_df$DEP003_2013_Value)
+
+qplot(bins=100,
+      x=DEP003_2013_Value,
+      data=subset(explorer_df,
+                  DEP003_2013_Value>-1))
+
+summary(explorer_df$DEP003_2014_Value)
+
+qplot(bins=100,
+      x=DEP003_2014_Value,
+      data=subset(explorer_df,
+                  DEP003_2014_Value>-1))
+
+summary(explorer_df$DEP003_2015_Value)
+
+qplot(bins=100,
+      x=DEP003_2015_Value,
+      data=subset(explorer_df,
+                  DEP003_2015_Value>-1))
+
+```
+
+These are percentages defined by small numbers over other small numbers. For that reason, there are visible peaks corresponding to all the 'easy' ratios: 0, 1, 1/2, 1/3, 2/3, 1/4, 3/4.
+
+As would be expected, the summaries of DEP003 resemble each other more closely than they do DEP001.
+
+# Univariate Analysis
+
+The dataset, after my modifications, contains the following variables:
+
+CCG.Name: The group to which each practice belongs.
+
+MH.QOF.PREVALENCE: Fraction of patients diagnoed with schizophrenia, bipolar affective disorder, or another psychosis.
+
+DEP.QOF.PREVALENCE: Fraction of patients diagnosed with depression.
+
+DEP.QOF.INCIDENCE: Fraction of patients diagnosed with depression who became depressed in a given year.
+
+DEM.QOF,PREVALENCE: Fraction of patients diagnosed with dementia.
+
+LTMH.REPORTED: Fraction of respondents who reported having a long-term mental health issue.
+
+ALZ.OR.DEM.REPORTED: Fraction of respondents who reported having Alzheimers or dementia.
+
+*.INDICATOR.EXCEPTION.RATE: For incentive reasons, some patients aren't added to the indicators. For example, some patients would have been given a treatment measured by an indicator, except that it would have interacted negatively with other treatments. Since they didn't perform the treatment, but the treatment genuinely shouldn't have been performed, the patient is excluded from the numerator AND denominator of the indicator; and since they want some kind of record of the event, it is recorded in the exception rate variable.
+
+DEP001, DEP003: Indicators of a given practice's ability to treat depression. DEP001 is the proportion of newly diagnosed patients w. depression who had a bio-psychosocial assessment on diagnosis. DEP003 is the proportion of newly diagnosed patients with depression who had a review 10-56 days after diagnosis.
+
+MH0*: Similar indicators, but for mental health in general.
+
+DEM0*: Similar indicators, but for dementia.
+
+All of these are available for some years between 2009-2016, but most aren't available for all of them.
+
+<br>
+
+I'd be interested to see how the other factors influence the ability of practices to treat depression. So I'll use DEP001 and DEP003 indicators as my features of interest.
+
+The prevalence and incidence of depression seem like obvious choices of features that might affect my features of interest. But the MH* indicators may also be useful.
+
+<br>
+
+I kept the denominators for a reason. The higher the denominator, the less noisy the data (I plan to prove this in the next section). If I want only data points I know to be noise-resistant, then I can limit myself to data points with high denominators associated.
+
+<br>
+
+I won't be working exclusively within years: not just comparing 2011 indicators to 2011 results. Working out whether indicators in current/previous years can be used to predict prevalence and incidence of depression in future years, with accuracy above what you'd get extrapolating year-on-year changes, would be very interesting.
+
+<br>  
+
+Seeing if different averages exist for different CCGs might be nice.
+
+<br>
+
+The prevalence and incidence of depression are both per patients over 18 registered with the practice. I used a new column, IP_FRACTION, as the incidence over prevalence; that is, the proportion of known-to-be-depressed patients who started being depressed in a given year.
+
+<br>
+
+Some ratios were askew due to some practices using different definitions of incidence: most seemed to use it as incidence during a year, but a few seemed to use it as incidence during the previous year. This made IP_FRACTION greater than 1 in a few cases.
+
+I handled this by discounting anything where IP_FRACTION is greater than 1.
+
+Some of the data signified missing or zero-over-zero data with an entry of -1. I made sure to exclude all values below zero, as no negative values for any of these fractions could be legitimate.
+
+#Pseudo-Bivariate Plots Section
+
+I've decided to examine how denominators affect their associated variables before analysing the interactions between variables themselves. Hence "Pseudo-Bivariate".
+
+<br>  
+
+Assuming means are similar, and no force is in place to stop smaller practices being higher-variance, these plots should look like funnels.
+
+(I know that the denominator is the independent variable and would usually belong on the x axis, but the convention for funnel plots is to have measures of sample size/robustness on the y, so I'm going with that.)
+
+<br>
+
+Start with indicators. DEP001 was discontinued after one year; I think because it didn't indicate anything well; was essentially random. If so, maybe it will give me a funnel plot which looks like a funnel?
+
+```{r echo=FALSE, Pseudo_Bivariate_Plots_1}
+
+ggplot(aes(x=DEP001_2013_Value, y=DEP001_2013_Denom),
+       data=explorer_df)+
+  geom_point(alpha=1/30)
+
+```
+
+Distortions caused by small sample size aside: yes, that looks like a funnel to me. There's a little skewedness, but that looks to be caused by hard limits at 0% and 100%.
+
+DEP003, however . . .
+
+```{r echo=FALSE, Pseudo_Bivariate_Plots_2}
+
+
+ggplot(aes(x=DEP003_2013_Value, y=DEP003_2013_Denom),
+       data=explorer_df)+
+  geom_point(alpha=1/20)
+```
+
+This also looks funnel-ish, but has more internal variation, even near the top.
+
+It also looks like the denominator might actually have an effect on this indicator: funnel plot is asymmetric in a way which looks like it might not have been caused by absolute limits at 0% and 100%; appears to lean a little to the right as you go up. I should test for correlation.
+
+```{r echo=FALSE, Pseudo_Bivariate_Plots_3}
+
+with(explorer_df, cor.test(DEP003_2013_Value, y=DEP003_2013_Denom))
+
+```
+
+Correlation is negligible. That could be an artifact of wide spread at bottom of graph; test this by running more tests, limited to higher-denominator datapoints.
+
+```{r echo=FALSE, Pseudo_Bivariate_Plots_4}
+
+with(subset(explorer_df, DEP003_2013_Denom>100),
+     cor.test(DEP003_2013_Value, y=DEP003_2013_Denom))
+
+with(subset(explorer_df, DEP003_2013_Denom>200),
+     cor.test(DEP003_2013_Value, y=DEP003_2013_Denom))
+
+```
+
+It looks like number of newly-diagnosed depressed patients does NOT correlate meaningfully with the indicator.
+
+
+What do incidence and prevalence look like when plotted against their denominators?
+
+```{r echo=FALSE, Pseudo_Bivariate_Plots_5}
+
+ggplot(aes(x=DEP.QOF.PREVALENCE_2014_Value,
+           y=DEP.QOF.PREVALENCE_2014_Denom),
+       data=explorer_df)+
+  geom_point(alpha=1/10)
+
+ggplot(aes(x=DEP.QOF.INCIDENCE_2014_Value,
+           y=DEP.QOF.INCIDENCE_2014_Denom),
+       data=explorer_df)+
+  geom_point(alpha=1/30)
+
+```
+
+They seem to become less spread apart as sample size increases, but this still looks less funnel-ish than I expected.
+
+This could just be that we have lots of low-denominator values and few high-denominator values, making the result look odd. (I suspect authorities actively try to keep practice size under 20k.) Try sqrt-scaling the y axis to bring everything within the same frame of comparison.
+
+```{r echo=FALSE, Pseudo_Bivariate_Plots_6}
+
+ggplot(aes(x=DEP.QOF.PREVALENCE_2014_Value,
+           y=DEP.QOF.PREVALENCE_2014_Denom),
+       data=explorer_df)+
+  geom_point(alpha=1/20)+
+  scale_y_sqrt()
+
+ggplot(aes(x=DEP.QOF.INCIDENCE_2014_Value,
+           y=DEP.QOF.INCIDENCE_2014_Denom),
+       data=explorer_df)+
+  geom_point(alpha=1/20)+
+  scale_y_sqrt()
+
+```
+
+Extreme outliers consistently have low denominators, but for the rank and file variance only barely seems to decrease as population increases.
+
+How does prevalence behave within just one CCG? I'll use Birmingham Crosscity CCG.
+
+```{r echo=FALSE, Pseudo_Bivariate_Plots_7}
+
+ggplot(aes(x=DEP.QOF.PREVALENCE_2014_Value,
+           y=DEP.QOF.PREVALENCE_2014_Denom),
+       data=subset(explorer_df,
+                   CCG.Name=="NHS Birmingham Crosscity CCG"))+
+  geom_point()
+
+```
+
+This looks a lot more like a funnel. Implies that differences within a CCG might be mostly random variation, and that most differences might be between CCGs.
+
+How about incidence?
+
+```{r echo=FALSE, Pseudo_Bivariate_Plots_8}
+
+
+ggplot(aes(x=DEP.QOF.INCIDENCE_2014_Value,
+           y=DEP.QOF.INCIDENCE_2014_Denom),
+       data=subset(explorer_df,
+                   CCG.Name=="NHS Birmingham Crosscity CCG"))+
+  geom_point()
+
+```
+
+Similar result. I should try for other CCGs, to confirm the finding.
+
+Plot the same graphs for Cumbria and Dorset CCGs.
+
+<br>
+
+Cumbria:
+
+```{r echo=FALSE, Pseudo_Bivariate_Plots_9}
+
+ggplot(aes(x=DEP.QOF.PREVALENCE_2014_Value,
+           y=DEP.QOF.PREVALENCE_2014_Denom),
+       data=subset(explorer_df, 
+                   CCG.Name=="NHS Cumbria CCG"))+
+  geom_point()
+
+ggplot(aes(x=DEP.QOF.INCIDENCE_2014_Value,
+           y=DEP.QOF.INCIDENCE_2014_Denom),
+       data=subset(explorer_df,
+                   CCG.Name=="NHS Cumbria CCG"))+
+  geom_point()
+
+```
+
+<br>
+
+And Dorset:
+
+```{r echo=FALSE, Pseudo_Bivariate_Plots_10}
+
+ggplot(aes(x=DEP.QOF.PREVALENCE_2014_Value,
+           y=DEP.QOF.PREVALENCE_2014_Denom),
+       data=subset(explorer_df,
+                   CCG.Name=="NHS Dorset CCG"))+
+  geom_point()
+
+ggplot(aes(x=DEP.QOF.INCIDENCE_2014_Value,
+           y=DEP.QOF.INCIDENCE_2014_Denom),
+       data=subset(explorer_df,
+                   CCG.Name=="NHS Dorset CCG"))+
+  geom_point()
+```
+
+These look far less funnel-ish. Moreover, how funnel-ish they do look seems constant across the incidence/prevalence divide; Birmingham Crosscity>Dorset>Cumbria in terms of funnelishness, whether you look at incidence or precidence. It looks like there's between-CCG variation in how much variation there is!
+
+Birmingham Crosscity is a metro area: geographically small, tightly packed. Dorset and Cumbria aren't. It may be that practices in cities tend to be more similar than CCG-mates because they are in more frequent contact with each other, and have fewer differences in environmental conditions.
+
+I should plot some graphs for metropolitan and non-metropolitan areas.
+
+My crude methodology (may refine if necessary): four city regions with names I recognise vs four CCGs which end in 'shire'.
+
+Graphs for city CCGs:
+
+```{r echo=FALSE, Pseudo_Bivariate_Plots_11}
+
+p1<-ggplot(aes(x=DEP.QOF.PREVALENCE_2014_Value,
+           y=DEP.QOF.PREVALENCE_2014_Denom),
+       data=subset(explorer_df,
+                   CCG.Name=="NHS Islington CCG"))+
+  geom_point()
+
+i1<-ggplot(aes(x=DEP.QOF.INCIDENCE_2014_Value,
+           y=DEP.QOF.INCIDENCE_2014_Denom),
+       data=subset(explorer_df,
+                   CCG.Name=="NHS Islington CCG"))+
+  geom_point()
+
+
+p2<-ggplot(aes(x=DEP.QOF.PREVALENCE_2014_Value,
+           y=DEP.QOF.PREVALENCE_2014_Denom),
+       data=subset(explorer_df,
+                   CCG.Name=="NHS Central Manchester CCG"))+
+  geom_point()
+
+i2<-ggplot(aes(x=DEP.QOF.INCIDENCE_2014_Value,
+           y=DEP.QOF.INCIDENCE_2014_Denom),
+       data=subset(explorer_df,
+                   CCG.Name=="NHS Central Manchester CCG"))+
+  geom_point()
+
+
+p3<-ggplot(aes(x=DEP.QOF.PREVALENCE_2014_Value,
+           y=DEP.QOF.PREVALENCE_2014_Denom),
+       data=subset(explorer_df,
+                   CCG.Name=="NHS Hammersmith And Fulham CCG"))+
+  geom_point()
+
+i3<-ggplot(aes(x=DEP.QOF.INCIDENCE_2014_Value,
+           y=DEP.QOF.INCIDENCE_2014_Denom),
+       data=subset(explorer_df,
+                   CCG.Name=="NHS Hammersmith And Fulham CCG"))+
+  geom_point()
+
+
+p4<-ggplot(aes(x=DEP.QOF.PREVALENCE_2014_Value,
+           y=DEP.QOF.PREVALENCE_2014_Denom),
+       data=subset(explorer_df,
+                   CCG.Name=="NHS Leicester City CCG"))+
+  geom_point()
+
+i4<-ggplot(aes(x=DEP.QOF.INCIDENCE_2014_Value,
+           y=DEP.QOF.INCIDENCE_2014_Denom),
+       data=subset(explorer_df,
+                   CCG.Name=="NHS Leicester City CCG"))+
+  geom_point()
+
+grid.arrange(p1,p2,p3,p4, ncol=2)
+grid.arrange(i1,i2,i3,i4, ncol=2)
+
+
+```
+
+<br>
+
+And the *shires:
+
+```{r echo=FALSE, Pseudo_Bivariate_Plots_12}
+
+p1<-ggplot(aes(x=DEP.QOF.PREVALENCE_2014_Value,
+           y=DEP.QOF.PREVALENCE_2014_Denom),
+       data=subset(explorer_df,
+                   CCG.Name=="NHS Eastern Cheshire CCG"))+
+  geom_point()
+
+i1<-ggplot(aes(x=DEP.QOF.INCIDENCE_2014_Value,
+           y=DEP.QOF.INCIDENCE_2014_Denom),
+       data=subset(explorer_df,
+                   CCG.Name=="NHS Eastern Cheshire CCG"))+
+  geom_point()
+
+
+p2<-ggplot(aes(x=DEP.QOF.PREVALENCE_2014_Value,
+           y=DEP.QOF.PREVALENCE_2014_Denom),
+       data=subset(explorer_df,
+                   CCG.Name=="NHS North Derbyshire CCG"))+
+  geom_point()
+
+i2<-ggplot(aes(x=DEP.QOF.INCIDENCE_2014_Value,
+           y=DEP.QOF.INCIDENCE_2014_Denom),
+       data=subset(explorer_df,
+                   CCG.Name=="NHS North Derbyshire CCG"))+
+  geom_point()
+
+
+p3<-ggplot(aes(x=DEP.QOF.PREVALENCE_2014_Value,
+           y=DEP.QOF.PREVALENCE_2014_Denom),
+       data=subset(explorer_df,
+                   CCG.Name=="NHS South Gloucestershire CCG"))+
+  geom_point()
+
+i3<-ggplot(aes(x=DEP.QOF.INCIDENCE_2014_Value,
+           y=DEP.QOF.INCIDENCE_2014_Denom),
+       data=subset(explorer_df,
+                   CCG.Name=="NHS South Gloucestershire CCG"))+
+  geom_point()
+
+
+p4<-ggplot(aes(x=DEP.QOF.PREVALENCE_2014_Value,
+           y=DEP.QOF.PREVALENCE_2014_Denom),
+       data=subset(explorer_df,
+                   CCG.Name=="NHS Oxfordshire CCG"))+
+  geom_point()
+
+i4<-ggplot(aes(x=DEP.QOF.INCIDENCE_2014_Value,
+           y=DEP.QOF.INCIDENCE_2014_Denom),
+       data=subset(explorer_df,
+                   CCG.Name=="NHS Oxfordshire CCG"))+
+  geom_point()
+
+grid.arrange(p1,p2,p3,p4, ncol=2)
+grid.arrange(i1,i2,i3,i4, ncol=2)
+
+
+
+```
+
+All the city CCGs, and only one of the *shires, gave funnel plots which looked like 'proper' funnels. I think this can be taken as weak evidence that metro status is an indicator of within-CCG homogeneity.
+
+Does this work with the depression indicators?
+
+DEP001 and DEP003 in two of the metro areas:
+
+```{r echo=FALSE, Pseudo_Bivariate_Plots_13}
+
+p1<-ggplot(aes(x=DEP001_2013_Value,
+           y=DEP001_2013_Denom),
+       data=subset(explorer_df,
+                   CCG.Name=="NHS Islington CCG"))+
+  geom_point()
+
+i1<-ggplot(aes(x=DEP003_2013_Value,
+           y=DEP003_2013_Denom),
+       data=subset(explorer_df,
+                   CCG.Name=="NHS Islington CCG"))+
+  geom_point()
+
+p2<-ggplot(aes(x=DEP001_2013_Value,
+           y=DEP001_2013_Denom),
+       data=subset(explorer_df,
+                   CCG.Name=="NHS Central Manchester CCG"))+
+  geom_point()
+
+i2<-ggplot(aes(x=DEP003_2013_Value,
+           y=DEP003_2013_Denom),
+       data=subset(explorer_df,
+                   CCG.Name=="NHS Central Manchester CCG"))+
+  geom_point()
+
+grid.arrange(p1,i1,p2,i2, ncol=2)
+
+```
+
+<br>
+
+And in two of the *shires:
+
+```{r echo=FALSE, Pseudo_Bivariate_Plots_14}
+
+
+p1<-ggplot(aes(x=DEP001_2013_Value,
+           y=DEP001_2013_Denom),
+       data=subset(explorer_df,
+                   CCG.Name=="NHS Eastern Cheshire CCG"))+
+  geom_point()
+
+i1<-ggplot(aes(x=DEP003_2013_Value,
+           y=DEP003_2013_Denom),
+       data=subset(explorer_df,
+                   CCG.Name=="NHS Eastern Cheshire CCG"))+
+  geom_point()
+
+p2<-ggplot(aes(x=DEP001_2013_Value,
+           y=DEP001_2013_Denom),
+       data=subset(explorer_df,
+                   CCG.Name=="NHS South Gloucestershire CCG"))+
+  geom_point()
+
+i2<-ggplot(aes(x=DEP003_2013_Value,
+           y=DEP003_2013_Denom),
+       data=subset(explorer_df,
+                   CCG.Name=="NHS South Gloucestershire CCG"))+
+  geom_point()
+
+grid.arrange(p1,i1,p2,i2, ncol=2)
+
+```
+
+It looks like these have variances which vary the same way: honing in on a single value in cities, spreading out more in more rural areas. The effect is less pronounced than with prevalence/incidence, though.
+
+# Bivariate Plots Section
+
+Before I go any further, I'll prune out any records with any -1 values for the indicators and other variables we'll be using. I hate to throw good data out with bad, but we have enough records to make this acceptable, and using ggcorr would be overly complicated without data that's been cleaned appropriately. This could bias the data a little, since zero-over-zeros are more common in small practices (implies presence of small denominators), but the previous section showed pretty clearly that denominator size isn't a predictor of values except insofar as it determines their variance. So I'm okay with this.
+
+```{r echo=FALSE, Bivariate_Plots_1}
+
+
+
+explorer_df_pruned<-subset(explorer_df,
+                           DEP001_2013_Value>-1 &
+                             DEP003_2013_Value>-1 &
+                             DEP003_2014_Value>-1 &
+                             DEP003_2015_Value>-1)
+
+explorer_df_pruned_II<-subset(explorer_df_pruned,
+                              DEP.QOF.PREVALENCE_2013_Denom>-1 &
+                                DEP.QOF.PREVALENCE_2014_Denom>-1 &
+                                DEP.QOF.PREVALENCE_2013_Value>-1 &
+                                DEP.QOF.PREVALENCE_2014_Value>-1 &
+                                DEP.QOF.INCIDENCE_2013_Value>-1 &
+                                DEP.QOF.INCIDENCE_2014_Value>-1)
+
+#explorer_df_pruned pulls out all the invalid DEP00* data; to be used for comparisons involving DEP00* indicators ONLY. explorer_df_pruned_II throws out any practice record with invalid incidence or prevalence.
+
+```
+
+<br>
+
+I want to see how depression indicators, practice size, and the features of interest interact over a year-long jump. DEP001, DEP003, Prevalence denominator, Prevalence, Incidence, for 2013 and 2014. So: ggcorr, run on nine variables in total (DEP001 was only collected for 2013).
+
+```{r echo=FALSE, Bivariate_Plots_2}
+
+columns_ggp_one<-c("DEP001_2013_Value",
+                   "DEP003_2013_Value",
+                   "DEP003_2014_Value",
+                   "DEP.QOF.PREVALENCE_2013_Denom",
+                   "DEP.QOF.PREVALENCE_2014_Denom",
+                   "DEP.QOF.PREVALENCE_2013_Value",
+                   "DEP.QOF.PREVALENCE_2014_Value",
+                   "DEP.QOF.INCIDENCE_2013_Value",
+                   "DEP.QOF.INCIDENCE_2014_Value")
+
+ggp_explorer_df_one<-explorer_df_pruned_II[columns_ggp_one]
+
+#ggpairs(ggp_explorer_df_one)
+
+names(ggp_explorer_df_one) <- c("D1_13",
+                               "D3_13",
+                               "D3_14",
+                               "Pop_13",
+                               "Pop_14",
+                               "Pre_13",
+                               "Pre_14",
+                               "Inc_13",
+                               "Inc_14") 
+
+ggcorr(ggp_explorer_df_one, label=TRUE, size=3.4)
+
+#Variable-label name size is zero because the variable-label names are too long to fit comfortably on the graph: fontsize=0 was the easiest way to disable them.
+
+```
+
+I should look at where all the strong correlations are here.
+
+<br>
+
+The strongest correlation (~1, middle of graph) is between 2013 and 2014 prevalence denominators. This makes sense, since they represent population size: how many people there are in a given practice will very strongly depend on how many there were the previous year, conditional on the practice existing in both years (all missing entries automatically left out).
+
+<br>
+
+The four incidence and prevalence values (top right corner) all strongly correlate, which seems intuitively sensible. More proof that assertions made in the previous section were right: it's not purely random, some places legitimately are more depressed/depressing than others. 2013 and 2014 prevalence values correlate particularly strongly; this makes sense. But is it that people mostly don't get better from their depression, or that high cure/death/departure rate is matched by high incidence rate?
+
+We can test this! Graphs of IP_FRACTION in earlier sections show it consistently around 15%. This implies turnover of 15%/year. I'd class this as "people mostly don't get better", but it depends how you see things.
+
+<br>
+
+The indicators strongly correlate (bottom left corner). Especially strong is the relation between 2013 indicators (~0.7). This suggests that there may be a general factor of depression care quality, which varies from year to year.
+
+<br>
+
+Population correlates weakly with indicators, more weakly with prevalence, and negligibly with incidence.
+
+<br>
+
+The DEP001 indicator (bottom row) correlates weakly & positively with incidence, prevalence and population. DEP003 (the more reliable indicator) (the two rows above DEP001) correlates even more weakly with all of these factors; some positively, some negatively. I don't think this is a particularly useful angle to pursue in trying to predict ability to treat depression.
+
+<br>
+
+How does IP_FRACTION affect DEP003?
+
+```{r echo=FALSE, Bivariate_Plots_3}
+
+ggplot(aes(x=IP_FRACTION_2013,
+           y=DEP003_2013_Value),
+       data=subset(explorer_df,
+                   IP_FRACTION_2013<=1 &
+                     DEP.QOF.INCIDENCE_2013_Value>-1 &
+                     DEP.QOF.PREVALENCE_2013_Value>-1 &
+                     DEP003_2013_Value>-1)) +
+  geom_point(alpha=0.1)
+
+```
+
+It doesn't look like it has much effect.
+
+```{r echo=FALSE, Bivariate_Plots_4}
+
+with(data=subset(explorer_df,
+                 IP_FRACTION_2013<=1 &
+                   DEP.QOF.INCIDENCE_2013_Value>-1 &
+                   DEP.QOF.PREVALENCE_2013_Value>-1 &
+                   DEP003_2013_Value>-1),
+     cor.test(IP_FRACTION_2013, DEP003_2013_Value))
+```
+
+Correlation testing bears this intuition out. I don't think this is a useful approach.
+
+<br>  
+
+Let's see how the general mental health indicators interact with depression indicators in the same year. I have high hopes for this, considering how indicators interacted in the last ggcorr.
+
+The most recent year where all the MH indicators were used was 2013, so I'll use that.
+
+```{r echo=FALSE, Bivariate_Plots_5}
+
+
+explorer_df_pruned_III<-subset(explorer_df_pruned,
+                               MH002_2012_Value>-1 &
+                                 MH002_2013_Value>-1 &
+                                 MH002_2014_Value>-1 &
+                                 MH002_2015_Value>-1 &
+                                 MH003_2012_Value>-1 &
+                                 MH003_2013_Value>-1 &
+                                 MH003_2014_Value>-1 &
+                                 MH003_2015_Value>-1 &
+                                 MH004_2012_Value>-1 &
+                                 MH004_2013_Value>-1 &
+                                 MH005_2012_Value>-1 &
+                                 MH005_2013_Value>-1 &
+                                 MH006_2012_Value>-1 &
+                                 MH006_2013_Value>-1 &
+                                 MH007_2012_Value>-1 &
+                                 MH007_2013_Value>-1 &
+                                 MH007_2014_Value>-1 &
+                                 MH007_2015_Value>-1 &
+                                 MH008_2012_Value>-1 &
+                                 MH008_2013_Value>-1 &
+                                 MH008_2014_Value>-1 &
+                                 MH008_2015_Value>-1 &
+                                 MH009_2012_Value>-1 &
+                                 MH009_2013_Value>-1 &
+                                 MH009_2014_Value>-1 &
+                                 MH009_2015_Value>-1 &
+                                 MH010_2012_Value>-1 &
+                                 MH010_2013_Value>-1 &
+                                 MH010_2014_Value>-1 &
+                                 MH010_2015_Value>-1)
+
+#explorer_df_pruned_III throws out any record missing a DEP* or an MH* indicator; for use comparing those indicators only.
+
+columns_ggp_two<-c("DEP001_2013_Value",
+                   "DEP003_2013_Value",
+                   "MH002_2013_Value",
+                   "MH003_2013_Value",
+                   "MH004_2013_Value",
+                   "MH005_2013_Value",
+                   "MH006_2013_Value",
+                   "MH007_2013_Value",
+                   "MH008_2013_Value",
+                   "MH009_2013_Value",
+                   "MH010_2013_Value")
+
+ggp_explorer_df_two<-explorer_df_pruned_III[columns_ggp_two]
+
+#ggpairs(ggp_explorer_df_two)
+
+names(ggp_explorer_df_two) <- c("DEP1",
+                               "DEP3",
+                               "MH02",
+                               "MH03",
+                               "MH04",
+                               "MH05",
+                               "MH06",
+                               "MH07",
+                               "MH08",
+                               "MH09",
+                               "MH10") 
+
+ggcorr(ggp_explorer_df_two, label=TRUE, size=3.4)
+
+```
+
+The depression indicators (bottom two rows) correlate positively with all the mental health indicators, suggesting a general factor of medical competence. This correlation is far weaker with MH008, MH009 and MH010 (rightmost three columns) than with the other mental health indicators.
+
+The MH002-MH007 block (red triangle in centre of graph) correlate strongly with each other; suggests that mental health abilities measured by these indicators are to some extent measuring the same thing. MH004-MH006 were removed after 2014; I suspect redundancy with the rest of this block may have been part of the reason why.
+
+MH009 and MH010 (rightmost two columns) correlate strongly with each other, but weakly with everything else. MH008 (third from right) correlates weakly with everything, and has especially weak correlations with depression indicators.
+
+<br>
+
+I've established some relationships. But why do they exist? I'll look at the Mental Health indicators in slightly more detail.
+
+MH002-MH007 are a spread of indicators indicating how well the general health of mentally ill patients is handled.
+
+MH008 is a measure of how frequently cervical cancer screening is carried out on mentally ill female patients. It mostly exists to measure the attitudes of the doctors instead of their abilities, and focuses on mentally ill women instead of the population as a whole, so it's reasonable that it might not correlate much with other indicators.
+
+MH009 and MH010 are measures of how well risks associated with lithium therapy are addressed. It makes sense that they would correlate.
+
+<br>
+
+Let's see if these effects still apply in 2015 data.
+
+```{r echo=FALSE, Bivariate_Plots_6}
+
+columns_ggp_three<-c("DEP003_2015_Value",
+                     "MH002_2015_Value",
+                     "MH003_2015_Value",
+                     "MH007_2015_Value",
+                     "MH008_2015_Value",
+                     "MH009_2015_Value",
+                     "MH010_2015_Value")
+
+ggp_explorer_df_three<-explorer_df_pruned_III[columns_ggp_three]
+
+#ggpairs(ggp_explorer_df_three)
+
+names(ggp_explorer_df_three) <- c("DEP003",
+                               "MH002",
+                               "MH003",
+                               "MH007",
+                               "MH008",
+                               "MH009",
+                               "MH010") 
+
+ggcorr(ggp_explorer_df_three, label=TRUE, size=4)
+
+```
+
+Every trend noticed in 2013 indicator pairing is there. I think I can assume this means they'll stay valid in general.
+
+How does DEP003 vary with MH002, MH003, and MH007 (the three MH indicators which most strongly correlate with it)?
+
+Using 2015 data:
+
+```{r echo=FALSE, Bivariate_Plots_7}
+
+
+ggplot(aes(x=MH002_2013_Value,
+           y=DEP003_2013_Value),
+       data=explorer_df_pruned_III)+
+  geom_point(alpha=1/10)
+
+ggplot(aes(x=MH003_2013_Value,
+           y=DEP003_2013_Value),
+       data=explorer_df_pruned_III)+
+  geom_point(alpha=1/10)
+
+ggplot(aes(x=MH007_2013_Value,
+           y=DEP003_2013_Value),
+       data=explorer_df_pruned_III)+
+  geom_point(alpha=1/10)
+
+```
+
+Those graphs don't give me any particular insight.
+
+If these graphs all measure similar things, taking an average of the MH00* values may help signal exist over noise. 
+
+```{r echo=FALSE, Bivariate_Plots_8}
+
+
+ggplot(aes(x=(MH002_2013_Value+MH003_2013_Value+MH007_2013_Value)/3,
+           y=DEP003_2013_Value),
+       data=explorer_df_pruned_III)+
+  geom_point(alpha=1/10)
+
+```
+
+That's slightly improved: I think I can actually see the correlation now.
+
+Formal test to see if the correlation is actually stronger.
+
+```{r echo=FALSE, Bivariate_Plots_9}
+
+cor.test((explorer_df_pruned_III[,"MH002_2013_Value"]+
+             explorer_df_pruned_III[,"MH003_2013_Value"]+
+             explorer_df_pruned_III[,"MH007_2013_Value"])/3,
+          explorer_df_pruned_III[,"DEP003_2013_Value"])
+
+cor.test(explorer_df_pruned_III[,"MH002_2013_Value"],
+         explorer_df_pruned_III[,"DEP003_2013_Value"])
+cor.test(explorer_df_pruned_III[,"MH003_2013_Value"],
+         explorer_df_pruned_III[,"DEP003_2013_Value"])
+cor.test(explorer_df_pruned_III[,"MH007_2013_Value"],
+         explorer_df_pruned_III[,"DEP003_2013_Value"])
+
+```
+
+Correlation for the average is slightly stronger than with any of its components, but not by much. Probably best to use all of them, instead of an average, in any model I create.
+
+<br>
+
+I want to know whether the effect I saw in depression indicators - correlating strongly with similar indicators, but weakly with themselves in other years, suggesting a general factor of care quality which varies significantly with time - is present in MH indicators as well. I only have two depression indicators, one of which is only present for one year; I will need more evidence of plausibility if I want to say the pattern I saw there wasn't a fluke.
+
+Ggcorr for MH002, 003, 007, 009, and 010, for 2014 and 2015:
+
+```{r echo=FALSE, Bivariate_Plots_10}
+
+columns_ggp_four<-c("MH002_2014_Value",
+                    "MH003_2014_Value",
+                    "MH007_2014_Value",
+                    "MH009_2014_Value",
+                    "MH010_2014_Value",
+                    "MH002_2015_Value",
+                    "MH003_2015_Value",
+                    "MH007_2015_Value",
+                    "MH009_2015_Value",
+                    "MH010_2015_Value")
+
+ggp_explorer_df_four<-explorer_df_pruned_III[columns_ggp_four]
+
+names(ggp_explorer_df_four) <- c("M02_14",
+                                 "M03_14",
+                                 "M07_14",
+                                 "M09_14",
+                                 "M10_14",
+                                 "M02_15",
+                                 "M03_15",
+                                 "M07_15",
+                                 "M09_15",
+                                 "M10_15") 
+
+#ggpairs(ggp_explorer_df_four)
+
+ggcorr(ggp_explorer_df_four, label=TRUE, size=3)
+
+```
+
+It looks like the same pattern holds for the general-health and lithium-therapy groupings: they correlate more strongly with their fellow indicators than with their future selves.
+
+Also, interestingly: the extent to which any two indicators correlate seems to stay roughly constant year-on-year.
+
+<br>
+
+A central part of my analysis is that indicators correlate better with similar indicators than with their future selves. I should look into exactly how they - particularly my features of interest - do this, by plotting them against each other.
+
+```{r echo=FALSE, Bivariate_Plots_11}
+
+
+ggplot(aes(x=DEP001_2013_Value,
+           y=DEP003_2013_Value),
+       data=explorer_df_pruned)+
+  geom_point(alpha=1/10)
+
+ggplot(aes(x=DEP003_2013_Value,
+           y=DEP003_2014_Value),
+       data=explorer_df_pruned)+
+  geom_point(alpha=1/10)
+
+ggplot(aes(x=DEP003_2014_Value,
+           y=DEP003_2015_Value),
+       data=explorer_df_pruned)+
+  geom_point(alpha=1/10)
+
+```
+
+Indicators of the same type and same year will have the same denominator; here it's number of depressed patients. So there's a disproportionate chance of values being identical in a given year (notice the straight x=y line in the first graph) and no corresponding effect between years (notice the complete lack of that in the other two graphs).
+
+This could make it look like indicators correlate more with each other in the present than with themselves in future years, while actually being an artifact of small, shared denominators.
+
+And this would apply for the groups of mental health indicators too . . .
+
+I can minimise bias by only including practices with high denominators for the depression indicators.
+
+And I can overcorrect for it, by removing every pairing with identical scores from the correlation and scatter plots. None of this manipulation will introduce new biases, since we established in Pseudo-Bivariate that the denominator doesn't correlate meaningfully with the numerator. But removing low-denominator datapoints would decrease variance, artificially improving correlation score, so I'd need to make a comparable 2013-vs-2014 correlation to compare this to.
+
+I can also erase the bias entirely by avoiding all cases where DEP001 and DEP003 have the same denominator (exceptions mean there would be some of these, though not many). I don't know if there's anything special about the practices which more frequently have exceptions, so this may be introducing new biases. Also, doing this would shrink sample size considerably.
+
+<br>
+
+To be absolutely sure, I'm going to try all three of those methods in order.
+
+DEP001 vs DEP003, high denominators only:
+
+```{r echo=FALSE, Bivariate_Plots_12}
+
+
+ggplot(aes(x=DEP001_2013_Value,
+           y=DEP003_2013_Value),
+       data=subset(explorer_df_pruned, DEP001_2013_Denom>200))+
+  geom_point(alpha=1/10)
+
+with(subset(explorer_df_pruned,
+            DEP001_2013_Denom>200),
+     cor.test(DEP001_2013_Value, DEP003_2013_Value))
+
+with(subset(explorer_df_pruned,
+            DEP003_2013_Denom>200),
+     cor.test(DEP003_2013_Value, DEP003_2014_Value))
+
+```
+
+Still beats a comparable correlation between DEP003 values in 2013 and 2014.
+
+DEP001 vs DEP003, Overcorrecting for bias:
+
+```{r echo=FALSE, Bivariate_Plots_13}
+
+ggplot(aes(x=DEP001_2013_Value,
+           y=DEP003_2013_Value),
+       data=subset(explorer_df_pruned,
+                   DEP001_2013_Value!=DEP003_2013_Value))+
+  geom_point(alpha=1/10)
+
+with(subset(explorer_df_pruned,
+            DEP001_2013_Value!=DEP003_2013_Value),
+     cor.test(DEP001_2013_Value, DEP003_2013_Value))
+
+```
+
+Notice the gap in the scatterplot along the line x=y. Notice that, despite biasing *against* correlation like this, there's *still* more correlation than there was between 2013 and 2014 DEP003 values.
+
+Erasing the bias, at the cost of limiting sample size, and potentially adding new biases:
+
+```{r echo=FALSE, Bivariate_Plots_14}
+
+ggplot(aes(x=DEP001_2013_Value,
+           y=DEP003_2013_Value),
+       data=subset(explorer_df_pruned,
+                   DEP001_2013_Denom!=DEP003_2013_Denom))+
+  geom_point(alpha=1/10)
+
+with(subset(explorer_df_pruned,
+            DEP001_2013_Denom!=DEP003_2013_Denom),
+     cor.test(DEP001_2013_Value, DEP003_2013_Value))
+
+```
+
+I just realised what bias this introduces. This only tracks practices with exceptions; the more patients, the more chances for exceptions to exist; ergo this subset has lots of high-population and high-depression practices, artificially increasing correlation.
+
+<br>
+
+All three adjusted tests gave results confirming my original impression. I think I can be confident the identicals on the y=x line aren't the cause of my findings.
+
+# Bivariate Analysis
+
+Surprisingly, depression indicators (especially DEP003, the more reliable and consistently available of the two) showed little correlation with population size, depression prevalence, and depression incidence.
+
+DEP003 did correlate more strongly with other mental health indicators, but not equally with all of them. Mental health indicators relevant to general health were far better predictors of DEP003 than indicators relevant to lithium therapy.
+
+DEP003 in 2013 correlated strongly with DEP001 in 2013, but comparatively weakly with DEP003 in 2014. This suggests the presence of a general factor of ability to treat depression, which varies greatly year-on-year within a given practice.
+
+<br>
+
+The MH0* mental health indicators could be divided into three 'blocks'. MH002-MH007 are indicators of how well the general physical health of mentally ill patients was managed. MH009 and MH010 are indicators of how well lithium therapy is managed. MH008 is an indicator of attitudes towards mentally ill women. Indicators in these blocks all strongly correlate with each other, but weakly with indicators in other blocks.
+
+Indicators will consistently correlate more strongly with members of their own block than with themselves one year in the future. This suggests the presence of general factors of ability to treat mental health issues of different types, which vary greatly year-on-year within a given practice.
+
+<br>
+
+The strongest relationships found - aside from completely banal ones, like how the number of people handled by a given practice one year correlated >0.99 with the number of people handled by it the previous year - were between members of these groups of indicators.
+
+# Multivariate Plots Section
+
+How does DEP003 change over time?
+
+```{r echo=FALSE, Multivariate_Plots_1}
+
+explorer_df_pruned$floored_D3_2013<-
+  floor(explorer_df_pruned$DEP003_2013_Value/10)*10
+explorer_df_pruned$floored_D3_2014<-
+  floor(explorer_df_pruned$DEP003_2014_Value/10)*10
+explorer_df_pruned$floored_D3_2015<-
+  floor(explorer_df_pruned$DEP003_2015_Value/10)*10
+
+#NOW QUANTISED.
+
+group_2013<-group_by(explorer_df_pruned, floored_D3_2013)
+summary_2013<-summarise(group_2013, n_2013=n())
+group_2014<-group_by(explorer_df_pruned, floored_D3_2014)
+summary_2014<-summarise(group_2014, n_2014=n())
+group_2015<-group_by(explorer_df_pruned, floored_D3_2015)
+summary_2015<-summarise(group_2015, n_2015=n())
+
+names(summary_2013)[names(summary_2013) == 'floored_D3_2013'] <- 'floored_D3'
+names(summary_2014)[names(summary_2014) == 'floored_D3_2014'] <- 'floored_D3'
+names(summary_2015)[names(summary_2015) == 'floored_D3_2015'] <- 'floored_D3'
+
+summary_data<-merge(summary_2013,summary_2014)
+summary_data<-merge(summary_data,summary_2015)
+
+
+#print(summary_data)
+
+summary_data_melted<-melt(summary_data, id.vars="floored_D3")
+
+#print(summary_data_melted)
+
+ggplot(summary_data_melted, aes(floored_D3,value, col=variable)) + 
+  geom_point()+
+  geom_line()
+
+```
+
+Meaningful increase in >50% values over time. The main motion is from 2013 to 2014. There's a weird effect at top tail, possibly caused by low denominators.
+
+Would I see the same thing in another indicator?
+
+```{r echo=FALSE, Multivariate_Plots_2}
+
+#I'd want to try this for multiple other indicators. Which means I should write it as a function.
+
+#The below is a rewriting of the ad hoc method in the previous section, so it can be used for any spread of years and any indicator, automatically. I also tweaked the way it displays, to ensure we always get the full 0%-100% spread.
+
+PlotChangeInSpreadOverTime <- function(input_dataframe, indicator, firstyear, lastyear, quant_n){
+  for (year in firstyear:lastyear){
+    name_of_column<-paste(indicator,year,"Value",
+                          sep="_")
+    eval(parse(text=paste(
+      "input_dataframe$floored_values_",year,
+      "<-floor(input_dataframe$",name_of_column,
+      "/quant_n)*quant_n",
+      sep="")))
+    eval(parse(text=paste(
+      "group_",year,"<-group_by(input_dataframe,
+      floored_values_", year, ")",
+      sep="")))
+    eval(parse(text=paste(
+      "summary_", year,
+      "<-summarise(group_",year,", data_from_",year,"=n())",
+      sep="")))
+    eval(parse(text=paste(
+      "names(summary_",year,")[names(summary_",year,") ==
+      'floored_values_",year,"']<- 'floored_",indicator,"'",
+      sep="")))
+  }
+  eval(parse(text=paste(
+    "summary_data<-
+    summary_",firstyear,
+    sep="")))
+  for (year in ((firstyear+1):lastyear)){
+    eval(parse(text=paste(
+      "summary_data<-
+      merge(summary_data,summary_",year,")",
+      sep="")))
+  }
+  #print(summary_data)
+  eval(parse(text=paste(
+    "summary_data_melted<-
+    melt(summary_data, id.vars='floored_",indicator,"')",
+    sep="")))
+  eval(parse(text=paste(
+    "ggplot(summary_data_melted,
+    aes(floored_",indicator,",
+    value,
+    col=variable)) +
+    geom_point() +
+    geom_line() +
+    scale_colour_brewer(palette='Spectral') +
+    coord_cartesian(xlim=c(0,100))",
+    sep="")))
+    
+}
+
+PlotChangeInSpreadOverTime( explorer_df_pruned,
+                            "MH002",
+                            2012, 2015,
+                            10)
+```
+
+It looks like - assuming this is more than noise - the MH002 data had the same jump from 2013 to 2014, and the same smaller improvement from 2014 to 2015. And this is evidence against the doctors-learn-to-tick-new-boxes hypothesis, since MH002 was introduced in 2012, the best year on record by a wide margin.
+
+I should see if this pattern is present for other indicators.
+
+```{r echo=FALSE, Multivariate_Plots_3}
+
+
+PlotChangeInSpreadOverTime( explorer_df_pruned,
+                            "MH003",
+                            2012, 2015,
+                            10)
+
+```
+
+I hadn't realised how skewed this variable is; can't draw any sensible conclusions from this. I'll try again with more bins.
+
+```{r echo=FALSE, Multivariate_Plots_4}
+
+PlotChangeInSpreadOverTime( explorer_df_pruned,
+                            "MH003",
+                            2012, 2015,
+                            5)
+```
+
+Looks like MH003 has been getting uniformly worse over time. That could just be a fact about MH003, and MH007 (remaining indicator of that block with four years' data) would show the pattern I saw in MH002 and DEP003?
+
+```{r echo=FALSE, Multivariate_Plots_5}
+
+PlotChangeInSpreadOverTime( explorer_df_pruned,
+                            "MH007",
+                            2012, 2015,
+                            5)
+```
+
+This has exactly the pattern I saw in MH002: big drop from 2012 to 2013, jump from 2013 to 2014, comparatively small changes from 2014 to 2015.
+
+I think this *is* a pattern; weak-but-valid evidence that the matching pattern I saw in DEP003 isn't just noise.
+
+<br>
+
+Now, a new line of inquiry: DEP003 vs DEP001 in 2013, cut by high denominators. (Get a summary first so I know where to cut)
+
+```{r echo=FALSE, Multivariate_Plots_6}
+
+summary(explorer_df_pruned$DEP003_2013_Denom)
+
+explorer_df_pruned$cut_DEP_denom<-
+  cut(explorer_df_pruned$DEP003_2013_Denom,
+      breaks = list(0, 20, 50, 100,900))
+
+ggplot(data=explorer_df_pruned,
+       aes(x=DEP003_2013_Value,
+           y=DEP001_2013_Value))+
+  geom_point(alpha=0.3, aes(color=cut_DEP_denom))+
+  scale_colour_brewer(palette= "RdYlGn")
+```
+
+MH002 vs MH003 in 2013; cut by high denominators:
+
+```{r echo=FALSE, Multivariate_Plots_7}
+
+summary(explorer_df_pruned_III$MH003_2013_Denom)
+
+explorer_df_pruned_III$cut_MH_denom<-
+  cut(explorer_df_pruned_III$MH003_2013_Denom,
+      breaks = list(0, 20, 50, 100,900))
+
+ggplot(data=explorer_df_pruned_III,
+       aes(x=MH003_2013_Value,
+           y=MH002_2013_Value))+
+  geom_point(alpha=0.3, aes(color=cut_MH_denom))+
+  scale_colour_brewer(palette= "RdYlGn")
+```
+
+2013 DEP003 vs 2014 DEP003, cut by 2013 MH002:
+
+```{r echo=FALSE, Multivariate_Plots_8}
+
+summary(explorer_df_pruned_III$MH002_2013_Value)
+
+explorer_df_pruned_III$cut_MH002<-
+  cut(explorer_df_pruned_III$MH002_2013_Value,
+      breaks = list(0,70, 90, 100))
+
+ggplot(data=explorer_df_pruned_III,
+       aes(x=DEP003_2013_Value,
+           y=DEP003_2014_Value))+
+  geom_point(alpha=0.3, aes(color=cut_MH002))+
+  scale_colour_brewer(palette= "RdYlGn")
+
+```
+
+It looks like low-MH002 dots might be higher-variance; high level of medical competence indicating more consistent treatment of depressives. If this effect even exists, it doesn't seem very strong; main effect of MH002 is the fact that it correlates positively with both DEP00* indicators, so high-MH002 dots tend to be nearer the top right.
+
+# Multivariate Analysis
+
+My guesses from previous sections were proven correct: higher denominators imply high variance; the y=x line on graphs comparing same-year same-group indicators is populated almost entirely by low-denominator data points.
+
+There seemed to be a tendency for high MH002 to imply smaller year-on-year changes in DEP003, but this effect is very weak, if it even exists. I think the indicators mostly correlate independently, without affecting each other much.
+
+The value of DEP003 seems to have increased over time; most of this increase was a jump a year after its introduction. Similarities with plots of MH002 and MH007 (but *not* MH003, which gets uniformly worse over time) suggest that it's probably not just doctors getting better at playing the system, though this doesn't rule out the possibility that it's some other kind of statistical artefact.
+
+# Hypotheses
+
+My hypotheses, for tester_df, are:
+
+Test 1) DEP003 and DEP001 will positively correlate, for 2013. (p<0.001)
+
+Test 2) DEP003 and MH002 will positively correlate, for 2013, 2014, and 2015 (p<0.001, three seperate tests)
+
+Test 3) DEP003 will be higher on average in 2015 than 2014 (p<0.01), and higher in 2014 than 2013 (p<0.005)
+
+# Tests section
+
+This is kind of a farce for most of the planned tests, since the correlations are simply too strong to be from pure chance, even if you take into account that I got them by comparing every member of a set of variables with every other member.
+
+The only tests I can imagine not getting low enough p-values are the last two, comparing DEP003 over time; changes there were small and noisy, so it's just possible they were (partly or entirely) flukes.
+
+That said, it costs me little to follow through.
+
+TEST 1
+
+```{r echo=FALSE, Test_1}
+
+tester_df_pruned<-
+  subset(tester_df,
+         DEP001_2013_Value>-1 &
+         DEP003_2013_Value>-1)
+
+with(tester_df_pruned,
+     cor.test(DEP001_2013_Value,
+              DEP003_2013_Value,
+              alternative="greater"))
+```
+
+Test 2
+
+```{r echo=FALSE, Test_2}
+tester_df_pruned<-subset(tester_df,
+                         DEP003_2013_Value>-1 &
+                         MH002_2013_Value>-1)
+
+with(tester_df_pruned,
+     cor.test(DEP003_2013_Value,
+              MH002_2013_Value,
+              alternative="greater"))
+
+tester_df_pruned<-subset(tester_df,
+                         DEP003_2014_Value>-1 &
+                         MH002_2014_Value>-1)
+
+with(tester_df_pruned,
+     cor.test(DEP003_2014_Value,
+              MH002_2014_Value,
+              alternative="greater"))
+
+tester_df_pruned<-subset(tester_df,
+                         DEP003_2015_Value>-1 &
+                         MH002_2015_Value>-1)
+
+with(tester_df_pruned, cor.test(DEP003_2015_Value,
+                                MH002_2015_Value,
+                                alternative="greater"))
+```
+
+Test 3
+
+```{r echo=FALSE, Test_3}
+#http://www.stat.columbia.edu/~martin/W2024/R2.pdf
+
+tester_df_pruned<-subset(tester_df,
+                         DEP003_2014_Value>-1 &
+                         DEP003_2015_Value>-1)
+
+with(tester_df_pruned,
+     t.test(DEP003_2015_Value-DEP003_2014_Value,
+            alternative="greater", mu=0))
+
+tester_df_pruned<-subset(tester_df,
+                         DEP003_2013_Value>-1 &
+                         DEP003_2014_Value>-1)
+
+with(tester_df_pruned,
+     t.test(DEP003_2014_Value-DEP003_2013_Value,
+            alternative="greater", mu=0))
+
+```
+
+#Test results
+
+All tests passed, with p-values multiple orders of magnitude lower than those being tested.
+
+------
+
+# Final Plots and Summary
+
+### Plot One
+```{r echo=FALSE, Plot_One}
+
+ggplot(aes(x=DEP003_2013_Value,
+           y=DEP003_2013_Denom),
+       data=subset(explorer_df,
+                   CCG.Name=="NHS Islington CCG"))+
+  geom_point() +
+  coord_cartesian(xlim = c(0, 100))+
+  xlab("Value") +
+  ylab("Denominator")+
+  ggtitle("Funnel Plot: Value vs Denominator for DEP003 in 2013\n
+(Islington CCG)")
+
+```
+
+### Description One
+
+In this dataset, datapoints have values and denominators associated with them. Every value is a percentage: the denominators are the numbers divided by to get that percentage.
+
+When you plot values against their associated denominators, while restricting your dataset to practices in a single CCG, you usually get a funnel plot. This suggests that the members of a given CCG are homogenous, and apparent differences are mostly due to random noise and small denominators.
+
+This effect is less pronounced and reliable in countryside CCGs than in metropolitan ones.
+
+### Plot Two
+```{r echo=FALSE, Plot_Two}
+
+explorer_df_pruned$Denominator<-
+  cut(explorer_df_pruned$DEP003_2013_Denom,
+      breaks = list(0, 20, 50, 100,900))
+
+ggplot(data=explorer_df_pruned,
+       aes(x=DEP003_2013_Value,
+           y=DEP001_2013_Value))+
+  geom_point(alpha=0.3,
+             aes(color=Denominator))+
+  xlab("DEP003")+
+  ylab("DEP001")+
+  ggtitle("Values for DEP001 and DEP003 in 2013, coloured by denominator")+
+  scale_colour_brewer(palette= "RdYlGn")
+
+```
+
+### Description Two
+
+In this dataset, datapoints have values and denominators associated with them. Every value is a percentage: the denominators are the numbers divided by to get that percentage.
+
+Indicators of performance tend to naturally form 'blocks' which correlate strongly with each other and weakly with members of other blocks. The depression treatment indicator block, the lithium therapy safety indicator block, and the physical health of mentally ill patients block are all examples. This graph shows the depression treatment indicators correlating with each other during 2013.
+
+As with the previous graph, you can see that lower denominators associated with values suggest a higher variance of those values.
+
+The blocks tend to share denominators, which means a disproportionate number of values will have the exact same value when denominators are small (notice the y=x line, and the fact that it is populated almost entirely by low-denominator red data points). This artificially increases intra-block correlation coefficients; however, the effect has been investigated rigorously and found to be small.
+
+### Plot Three
+```{r echo=FALSE, Plot_Three}
+
+PlotChangeInSpreadOverTime( explorer_df_pruned,
+                            "DEP003",
+                            2013, 2015,
+                            10)+
+  xlab("DEP003")+
+  ylab("number of practices")+
+  ggtitle("Variation in distribution of DEP003 over time")+
+  theme_dark()
+
+```
+
+### Description Three
+
+The value of DEP003 (a statistic indicating ability to treat depression) seems to have improved (i.e. increased, on average, moving from <50% values to >50% values) over the years for which it was collected; most of this improvement was a jump a year after its introduction, and only very little was from 2014 to 2015.
+
+Tests on a seperate dataset confirmed that both of these increases were statistically significant.
+
+Indicators of mental health treatment quality displayed similar motion (especially the sharp improvement from 2013 to 2014), suggesting that this is not just a fact about depression treatment.
+
+#Conclusions
+
+What would I say to someone who wants to know if their NHS practice would be good at treating their depression?
+
+First, I would tell them what to ignore. The number of depressed patients, the local incidence rate of depression, and the size of the practice all matter surprisingly little. (A caveat: a larger practice with more depressed patients will have more sources of information, and statistics about it will be less vulnerable to flukes; practice size on its own tells you nothing, but a larger practice will make other evidence more available and more reliable.)
+
+Then, I would tell them what they should use as evidence. How well the practice handles the physical health of mentally ill patients is a decent tell, but the best approach would probably be to find out how their depressed patients have been faring. How well they treat mental health patients, or patients in general, would be less indicative; ability to treat depression correlates positively but weakly with most other indicators of performance.
+
+In a city area, all the practices in a CCG tend to be similar as regards ability to treat depression, so patient stories from any will be indicative of all. In the countryside, this is less true, so they should focus more on information about the practice itself.
+
+I would advise them to focus on more recent information (i.e., weight information from the past year more heavily); there is a general factor of depression-treating ability for a given practice, and it changes remarkably rapidly.
+
+If they were female, or their depression required lithium therapy, then I would tell them to get information from/about patients specifically with those traits; attitudes towards mentally ill women and ability to safely administer lithium therapy both correlate very little with anything but themselves.
+
+------
+
+# Reflections
+
+This was a long and complicated project, involving multiple dead ends and realignments.
+
+My results were mostly too strong for testing on fresh data to be worth the time. My split-and-test paradigm would have been a good way to account for the issues associated with correlation-hunting using ggcorr if I'd had less data or were hunting weaker correlations, but the relationships were too robust for me to need it (as shown by the p < 10^-7 results from all the tests I did do). Also, using data from multiple years made it a little moot; in the bivariate plots section, I used 2013-and-2014 as an exploratory set, and 2014-and-2015 to confirm findings, so a fresh testing set was slightly redundant. However, the split-and-test paradigm *did* confirm that the changes over time weren't just random noise, and it gave me a chance to apply real scientific methodology.
+
+It would have been nice to account for issues with population density, in order to get meaningful averages for performance; in this analysis, a practice with 20000 patients was treated equally to one with 1000. Some sort of weighting system would have been helpful, though it would have had to work around the exceptions.
+
+It would also have been nice to look more deeply into funnel plots; part of my analysis is based on visually examining them and determining how closely they resemble a typical funnel plot. A qualitative measure of 'funnelishness' would have given the pseudo-bivariate section a stronger foundation.
+
+All in all, I'm happy with my work as it stands.
